@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="he">
+
+<head>
+	<meta charset="UTF-8">
+	<title>חפשן תמונות</title>
+	<style>
+		body {
+			font-family: sans-serif;
+			padding: 20px;
+			background: #f0f0f0;
+		}
+
+		#choose-folder {
+			padding: 1rem 2rem;
+			border-radius: 50px;
+			cursor: pointer;
+			border: 0;
+			background-color: white;
+			box-shadow: rgb(0 0 0 / 5%) 0 0 8px;
+			letter-spacing: 1.5px;
+			text-transform: uppercase;
+			font-size: 15px;
+			transition: all 0.5s ease;
+		}
+
+		#choose-folder:hover {
+			letter-spacing: 3px;
+			background-color: #383838;
+			color: hsl(0, 0%, 100%);
+			box-shadow: #383838 0px 7px 29px 0px;
+		}
+
+		#choose-folder:active {
+			letter-spacing: 3px;
+			background-color: #0b6075;
+			color: hsl(0, 0%, 100%);
+			box-shadow: #0b6075 0px 0px 0px 0px;
+			transform: translateY(10px);
+			transition: 100ms;
+		}
+
+
+		#top-bar {
+			margin-bottom: 2rem;
+			display: flex;
+			justify-content: space-around;
+		}
+
+		#search {
+			padding: 1rem 2rem;
+			border-radius: 50px;
+			font-size: 16px;
+			width: 15rem;
+		}
+
+		#gallery {
+			display: flex;
+			justify-content: center;
+			flex-wrap: wrap;
+			gap: 16px;
+		}
+
+		.project-block {
+			width: 11rem;
+			height: 18rem;
+			background: white;
+			padding: 10px;
+			box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+			text-align: center;
+			position: relative;
+			border-radius: 20px;
+		}
+
+		.block-img {
+			max-width: 100%;
+			height: 10rem;
+			margin-bottom: 8px;
+			cursor: pointer;
+		}
+
+		.title-bar {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			font-size: 14px;
+		}
+
+		.open-btn {
+			background: none;
+			border: none;
+			cursor: pointer;
+			font-size: 16px;
+		}
+
+		.open-btn:hover {
+			color: blue;
+		}
+
+		.tooltip {
+			position: absolute;
+			top: -30px;
+			left: 0;
+			right: 0;
+			background: #000;
+			color: #fff;
+			padding: 5px;
+			font-size: 12px;
+			border-radius: 3px;
+			display: none;
+		}
+
+		.project-block:hover .tooltip {
+			display: block;
+		}
+
+		#overlay {
+			position: fixed;
+			inset: 0;
+			background: rgba(0, 0, 0, 0.85);
+			display: none;
+			justify-content: center;
+			align-items: center;
+			z-index: 1000;
+		}
+
+		#overlay-content {
+			width: 100vw;
+			height: 80vh;
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			overflow: hidden;
+		}
+
+		#overlay-img {
+			max-width: 100%;
+			max-height: 100%;
+			object-fit: contain;
+			cursor: zoom-out;
+		}
+	</style>
+</head>
+
+<body>
+
+	<div id="top-bar">
+		<img src='./imgs/חיל-שוחרות-תקשוב.png' alt='logo' style='width: 100px; margin-bottom: 0 ; height: auto;'>
+		<button id="choose-folder">📂 Set projects folder</button>
+		<input type="text" id="search" placeholder="Search via proj name...">
+	</div>
+
+	<div id="gallery"></div>
+
+	<!-- Оверлей для увеличенного изображения -->
+	<div id="overlay">
+		<div id="overlay-content">
+			<img id="overlay-img" src="" alt="View image">
+		</div>
+	</div>
+
+	<script>
+		let allProjects = [];
+
+		document.getElementById('choose-folder').addEventListener('click', async () => {
+			const rootHandle = await window.showDirectoryPicker();
+			const gallery = document.getElementById('gallery');
+			gallery.innerHTML = '';
+			allProjects = [];
+
+			for await (const [folderName, folderHandle] of rootHandle.entries()) {
+				if (folderHandle.kind !== 'directory') continue;
+
+				let previewFile = null;
+				let projectName = folderName;
+				let description = '';
+
+				// Чтение info.txt
+				for await (const [fname, fhandle] of folderHandle.entries()) {
+					if (fhandle.kind === 'file' && fname.toLowerCase() === 'info.txt') {
+						try {
+							const file = await fhandle.getFile();
+							const text = await file.text();
+
+							const lines = text.split('\n');
+							for (let line of lines) {
+								if (line.startsWith('name=')) {
+									projectName = line.replace('name=', '').trim();
+								} else if (line.startsWith('description=')) {
+									description = line.replace('description=', '').trim();
+								}
+							}
+						} catch (e) {
+							console.error('reading error info.txt:', e);
+						}
+					}
+				}
+
+				// Поиск изображения
+				for await (const [fname, fhandle] of folderHandle.entries()) {
+					if (fhandle.kind === 'file' && /\.(png|jpe?g|webp)$/i.test(fname)) {
+						const lower = fname.toLowerCase();
+						if (lower.includes('final') || lower.includes('result') || lower.includes('out')) {
+							previewFile = await fhandle.getFile();
+							break;
+						}
+					}
+				}
+				if (!previewFile) {
+					for await (const [fname, fhandle] of folderHandle.entries()) {
+						if (fhandle.kind === 'file' && /\.(png|jpe?g|webp)$/i.test(fname)) {
+							previewFile = await fhandle.getFile();
+							break;
+						}
+					}
+				}
+
+				if (previewFile) {
+					const imgURL = URL.createObjectURL(previewFile);
+					allProjects.push({
+						name: projectName,
+						description: description,
+						imgURL: imgURL,
+						fullPath: folderHandle.name
+					});
+				}
+			}
+
+			renderProjects();
+		});
+
+		function renderProjects(filter = '') {
+			const gallery = document.getElementById('gallery');
+			gallery.innerHTML = '';
+
+			allProjects
+				.filter(proj => proj.name.toLowerCase().includes(filter.toLowerCase()))
+				.forEach(project => {
+					const div = document.createElement('div');
+					div.className = 'project-block';
+					div.innerHTML = `
+						<div class="tooltip">${project.description || 'No description'}</div>
+						<img src="${project.imgURL}" alt="" class="block-img" onclick="openOverlay('${project.imgURL}')">
+						<div class="title-bar">
+							<span>${project.name}</span>
+							<button class="open-btn" title="Copy path" onclick="copyPath('${project.fullPath}')">📁</button>
+						</div>
+					`;
+					gallery.appendChild(div);
+				});
+		}
+
+		function copyPath(folderName) {
+			navigator.clipboard.writeText(folderName)
+				.then(() => alert(`Path "${folderName}" copied to clipboard`))
+				.catch(err => alert("Error copying path"));
+		}
+
+		document.getElementById('search').addEventListener('input', e => {
+			renderProjects(e.target.value);
+		});
+
+		function openOverlay(imgURL) {
+			const overlay = document.getElementById('overlay');
+			const overlayImg = document.getElementById('overlay-img');
+			overlayImg.src = imgURL;
+			overlay.style.display = 'flex';
+		}
+
+		document.getElementById('overlay').addEventListener('click', () => {
+			document.getElementById('overlay').style.display = 'none';
+		});
+	</script>
+
+</body>
+
+</html>
